@@ -1,0 +1,173 @@
+---
+title: "Assignment15"
+author: "James Brock"
+date: "03/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(MASS)
+library(glmnet)
+library(Stat2Data)
+library(data.table)
+
+select <- dplyr::select #fixes MASS::select override
+```
+
+# Part 1
+
+1) A classification rule is a learned function that for an input feature vector x that may contain one or more values, returns a categorical variable y that is commonly referred to as a label. It is a mapping from x to y known as a classifier which should reflect on the structure of the training data.
+
+2) A learning algorithm is an algorithm that given a set of data, it learns to process the features of the input data to produce a classification rule that maps future input data to output values such as a categorical values. The algorithm automatically is then able to identify patterns within the training data and hence data in the future that follows the same pattern / structure.
+
+3) Training data is the data inputted to a learning algorithm in order to teach it to produce an effective classification rule. Training data D consists a set of labeled data D = $((X_1, Y_i), ..., (X_n, Y_n))$. Each item is an ordered pair $(X_i, Y_i)$ where $X_i$ is a feature vector and $Y_i$ is a label associated with $X_i$. An example would be that x is data relating to a specific penguin, and y is the species that penguin belongs to.
+
+4) A feature vector is a vector containing multiple elements about an object such as an item of input data. A feature subsequently is an individual measurable property or characteristic of a phenomenon being observed such as a pixel in an image that would in its feature vector perhaps contain the RGB values that comprise the pixel.
+
+5) The label of a piece of data is the true value associated to the feature vector X in relation to Y. The classification rule aims to produce labels for input data that are as accurate as possible. Labels in a classification problem are categorical, representing defined classes. Labels are the output classes essentially.
+
+6) The test error is the percentage of incorrect classifications made by the learned classifier on the unseen test data. This is the metric most relied upon when evaluating the performance of the classifier since it is a more reliable indication on how the classifier will perform on future data. A classification error is where the classifier predicts the wrong label for a feature vector. In the case of a classification problem, we weigh all errors equally, if the correct label is not assigned, then the rate of error is constant. We can't directly compute the test error but can use D to compute the train error, the test error is the average number of as yet unseen misclassified data.
+
+7) The training error is the percentage of incorrect classifications made by the classification rule whilst it is still learning to make predictions. During the early learning, the error rate will be high since the learning algorithm won't know what patterns to look for but gradually, given that the algorithm is sound as well as the data, the error rate should drop significantly. The training error should not be used as a metric of performance of the model as a whole as it has not been tested on unseen data. Yet again, an error is where the learning algorithm gives an incorrect label prediction for a feature vector. The training error is the average number of mistakes made on the training data.
+
+8) The train test split is the method of splitting the dataset into two groups of data, the data used to learn the classifier and the data used to test the performance of the classifier once it has been trained. During the split, we must make sure than the data in the two groups are fully disjoint and that the labels for each corresponding piece of data is correctly assigned during the split. The split ratio usually occurs anywhere from 60%-90% of the original data used for training and the rest is used for testing. Note: the test data should never been used to learn the classifier else it invalidates the learning procedure and the following evaluation.
+
+9) A linear classifier $\phi: x \rightarrow \{0,1\}$ cuts the feature space into two with a linear hyper-place, known as the decision boundary where we have d continuous features X = ($X^1, ... X^d$) $\in x = R^d$.
+
+If d=2 two, then the feature space is divided by a line but in general the feature space is divided by a (d-1) hyper-plane.
+
+Linear classifiers are a type of classification rule commonly written as:
+$\phi(x) = \{1 if w^0 + w^1 \cdot x^1 + ... + w^d \cdot x^d \geq 0, or 0 if w^0 + w^1 \cdot x^1 + ... + w^d \cdot x^d \lt 0$
+with weights w = $(w^1,...w^d) \in R^d$ and a bias $w^0 \in R$. This can be rewritten as $\phi(x) = 1 \{w x^T + w_0 \geq 0 \}$ where $(b^1,...b^d)^T = a^1 \cdot b^1 + ... + a^db^d$.
+
+# Part 2
+
+```{r part2, echo=FALSE}
+data("Hawks")
+hawks <- data.table(Hawks)
+
+hawks_total <- hawks %>%
+  select(Weight, Wing, Hallux, Tail, Species) %>%
+  filter(Species != "RT") %>%
+  drop_na() %>%
+  mutate(Species = as.numeric(Species == "SS"))
+
+num_hawks <- hawks_total %>% nrow()
+num_train <- floor(num_hawks*0.6)
+num_test <- num_hawks - num_train
+
+set.seed(123)
+test_inds <- sample(seq(num_hawks), num_test)
+train_inds <- setdiff(seq(num_hawks), test_inds)
+
+hawks_train <- hawks_total %>% filter(row_number() %in% train_inds)
+hawks_test <- hawks_total %>% filter(row_number() %in% test_inds)
+
+nrow(hawks_train)
+nrow(hawks_test)
+
+hawks_train_x <- hawks_train %>% select(-Species)
+hawks_train_y <- hawks_train %>% pull(Species)
+
+hawks_test_x <- hawks_test %>% select(-Species)
+hawks_test_y <- hawks_test %>% pull(Species)
+
+broken_classifier <- function(x){
+  return(rep(1, nrow(x)))
+}
+
+lda_train_predicted_y_broken <- broken_classifier(hawks_train_x)
+lda_train_error_broken <- mean(abs(lda_train_predicted_y_broken-hawks_train_y))
+lda_train_error_broken
+
+lda_test_predicted_y_broken <- broken_classifier(hawks_test_x)
+lda_test_error_broken <- mean(abs(lda_test_predicted_y_broken-hawks_test_y))
+lda_test_error_broken
+
+```
+
+The train and test error resulting from the choice of which label to apply displays a great disparity in size of the two classes. In our data sample the amount of data belonging to class 1 outweighs that of class 0 at least 3 to 1, likely more.
+
+# Part 3
+
+The linear discriminant analysis model is underpinned by a modeling of the binary labels as Bernoulli random variables: $Y \in \{0,1\} \rightarrow Y \sim \beta(q)$ for some fixed $q \in [0,1]$, and the feature vectors $X \in R^d$ are modelled as class-conditional Gaussians: $X \sim N(u_0, \sum)$ if Y = 0 where $u_0,u_1 \in R^d$, $X \sim N(u_1,\sum)$ if Y = 1 and $\sum \in R^{d \times d}$.
+
+This model relies of the Bayes Theorem of probability and is expressed in terms of the above as follows:
+$ P(Y = y) = $ {q if y = 1, 1-q if y = 0 
+$ P(X = x\ |\ Y=y) = \frac{1}{\sqrt(2\pi)^d|\sum|} exp(-\frac{1}{2}(x - u_y)\sum^{-1}(x-u_y)^T)$.
+
+When we have $\phi^*(x) = 1$, the above can be expressed after some fiddling around to the following:
+$\phi^*(x) = 1\{wx^T + w_0 \geq 0\}$
+With $w = (u_1 - u_0)\sum^{-1}$, $w^0 = log(\frac{q}{1-q})+\frac{1}{2}(u_0\sum^{-1}u_0^T - u_1\sum^{-1}u_1^T)$.
+
+The Bayes classifier in the linear discriminant model is linear, and is fitted with maximum likelihood estimation.
+
+```{r part3, echo=FALSE}
+lda_model <- MASS::lda(Species ~ .,data=hawks_train)
+
+lda_train_predicted_y <- predict(lda_model,hawks_train_x)$class %>% as.character() %>% as.numeric()
+lda_train_error <- mean(abs(lda_train_predicted_y-hawks_train_y))
+lda_train_error
+
+lda_test_predicted_y <- predict(lda_model,hawks_test_x)$class %>% as.character() %>% as.numeric()
+lda_test_error <- mean(abs(lda_test_predicted_y-hawks_test_y))
+lda_test_error
+
+```
+
+The training error is roughly 3% and the more important test error is roughly 3.8% which is not a bad result by any means, far far better than the previously made classifier.
+
+# Part 4
+
+Logistic regression is based on Bayes theorem again and is modelled as $P(Y = y\ |\ X = x)$, with the method of learning a classifier $\phi(x) = 1\{wx^T + w_0 \geq 0\}$.
+
+The bayes classifier is given as $\phi^*(x) := \{1 \ if\ P(Y = 1\ |\ X= x) \geq P(Y = 0\ |\ X = x), 0\ if\ P(Y = 0\ |\ X= x) \geq P(Y = 1\ |\ X = x)$. Hence we only have to model P(Y = y | X = x). We use the sigmoid function: S : R -> (0,1) to map real numbers to probabilities to model this condition. S(z) = $\frac{1}{1 + e^{-z}}$ is known as the logistic function.
+Two facts relating to this function are:
+1) 1-S(z) = S(-z)
+2) $\frac{\partial log S(z)}{\partial z} = S(-z)$. Using this information we can use the logistic sigmoid model:
+$P(Y = 1 | X = x) = S(wx^T + w_0) = \frac{1}{1 + e^{-wx^T-w_0}}$.
+
+After some fiddling around the bayes classifier satisfies from the above: $\phi^*(x) = 1 \leftarrow \rightarrow wx^T+w_0\geq 0$. Equivalently $\phi^*(x) = 1\{wx^T+w_0 \geq 0\}$, meaning that logistic regression also has a Bayes optimal classifier.
+
+```{r part4, echo=FALSE}
+logist_func <- function(x){
+  y = exp(x) / (1 + exp(x))
+}
+
+logist_plot <- ggplot(data = data.frame(x = c(-10,10)), aes(x))
+logist_plot + stat_function(fun=logist_func) + xlab("z") + ylab("S(z)")
+
+num_hawks <- hawks_total %>% nrow()
+num_train <- floor(num_hawks*0.6)
+num_test <- num_hawks - num_train
+
+set.seed(123)
+test_inds <- sample(seq(num_hawks), num_test)
+train_inds <- setdiff(seq(num_hawks), test_inds)
+
+hawks_train <- hawks_total %>% filter(row_number() %in% train_inds)
+hawks_test <- hawks_total %>% filter(row_number() %in% test_inds)
+
+hawks_train_x <- hawks_train %>% select(-Species)
+hawks_train_y <- hawks_train %>% pull(Species)
+
+hawks_test_x <- hawks_test %>% select(-Species)
+hawks_test_y <- hawks_test %>% pull(Species)
+
+logistic_model <- glmnet(x=hawks_train_x %>% as.matrix(), y = hawks_train_y, family="binomial", alpha=0, lambda=0)
+
+logistic_train_predicted_y <- predict(logistic_model, hawks_train_x %>% as.matrix(), type="class") %>% as.integer()
+logistic_train_error <- mean(abs(logistic_train_predicted_y-hawks_train_y))
+logistic_train_error
+
+logistic_test_predicted_y <- predict(logistic_model, hawks_test_x %>% as.matrix(), type="class") %>% as.integer()
+logistic_test_error <- mean(abs(logistic_test_predicted_y-hawks_test_y))
+logistic_test_error
+
+```
+
+The training error is: 2.58% and the test error is: 4.62%, meaning that in comparison to the LDA model, it performed better on the training data but didn't scale as well to the test data. 
+
+The above formulas are used to compute the gradient and parameters used for the learning algorithm in the logistic regression function. The parameters of $w, w^0$ need to be iteratively learned and the above functions help to locate the points at which the gradients for these values become 0 on a learning function curve. This is done by maximising the log likelihood iteratively using gradient ascent.
