@@ -46,44 +46,46 @@ with weights w = $(w^1,...w^d) \in R^d$ and a bias $w^0 \in R$. This can be rewr
 
 ```{r part2, echo=FALSE}
 data("Hawks")
-hawks <- data.table(Hawks)
+hawks <- data.table(Hawks) # load the data
 
+# create the required data frame
 hawks_total <- hawks %>%
-  select(Weight, Wing, Hallux, Tail, Species) %>%
-  filter(Species != "RT") %>%
-  drop_na() %>%
-  mutate(Species = as.numeric(Species == "SS"))
+  select(Weight, Wing, Hallux, Tail, Species) %>% # select the columns we need
+  filter(Species != "RT") %>% # filter out the red tailed species
+  drop_na() %>% # drop all rows with missing values
+  mutate(Species = as.numeric(Species == "SS")) # binarise the species column values with 1 for SS and 0 for CH
 
-num_hawks <- hawks_total %>% nrow()
-num_train <- floor(num_hawks*0.6)
-num_test <- num_hawks - num_train
+num_hawks <- hawks_total %>% nrow() # get the total number of hawks
+num_train <- floor(num_hawks*0.6) # get number of training examples
+num_test <- num_hawks - num_train # all other examples are for testing, 40%
 
-set.seed(123)
-test_inds <- sample(seq(num_hawks), num_test)
-train_inds <- setdiff(seq(num_hawks), test_inds)
+set.seed(123) # ensure reproducibility
+test_inds <- sample(seq(num_hawks), num_test) # generate test indices at random
+train_inds <- setdiff(seq(num_hawks), test_inds) # the training data is the disjoint set of the testing data
 
-hawks_train <- hawks_total %>% filter(row_number() %in% train_inds)
-hawks_test <- hawks_total %>% filter(row_number() %in% test_inds)
+hawks_train <- hawks_total %>% filter(row_number() %in% train_inds) # use the training indices to extract the training data
+hawks_test <- hawks_total %>% filter(row_number() %in% test_inds) # use the test indices to extract the test data
 
-nrow(hawks_train)
-nrow(hawks_test)
+nrow(hawks_train) # find how many training examples there are
+nrow(hawks_test) # find how many test examples there are
 
-hawks_train_x <- hawks_train %>% select(-Species)
-hawks_train_y <- hawks_train %>% pull(Species)
+hawks_train_x <- hawks_train %>% select(-Species) # remove the Species label so we only have the feature vectors
+hawks_train_y <- hawks_train %>% pull(Species) # extract only the Species label
 
-hawks_test_x <- hawks_test %>% select(-Species)
-hawks_test_y <- hawks_test %>% pull(Species)
+hawks_test_x <- hawks_test %>% select(-Species) # remove the Species label so we only have the feature vectors
+hawks_test_y <- hawks_test %>% pull(Species) # extract only the Species label
 
+# create a classifier that outputs for an input vector x, just 1s as the prediction for each element
 broken_classifier <- function(x){
   return(rep(1, nrow(x)))
 }
 
-lda_train_predicted_y_broken <- broken_classifier(hawks_train_x)
-lda_train_error_broken <- mean(abs(lda_train_predicted_y_broken-hawks_train_y))
+lda_train_predicted_y_broken <- broken_classifier(hawks_train_x) # get predictions of bad classifier for training data
+lda_train_error_broken <- mean(abs(lda_train_predicted_y_broken-hawks_train_y)) # calculate the train error
 lda_train_error_broken
 
-lda_test_predicted_y_broken <- broken_classifier(hawks_test_x)
-lda_test_error_broken <- mean(abs(lda_test_predicted_y_broken-hawks_test_y))
+lda_test_predicted_y_broken <- broken_classifier(hawks_test_x) # get predictions of bad classifier for test data
+lda_test_error_broken <- mean(abs(lda_test_predicted_y_broken-hawks_test_y)) # calculate the test error 
 lda_test_error_broken
 
 ```
@@ -105,14 +107,14 @@ With $w = (u_1 - u_0)\sum^{-1}$, $w^0 = log(\frac{q}{1-q})+\frac{1}{2}(u_0\sum^{
 The Bayes classifier in the linear discriminant model is linear, and is fitted with maximum likelihood estimation.
 
 ```{r part3, echo=FALSE}
-lda_model <- MASS::lda(Species ~ .,data=hawks_train)
+lda_model <- MASS::lda(Species ~ .,data=hawks_train) # train the lda model using Species as the label with the hawks training data
 
-lda_train_predicted_y <- predict(lda_model,hawks_train_x)$class %>% as.character() %>% as.numeric()
-lda_train_error <- mean(abs(lda_train_predicted_y-hawks_train_y))
+lda_train_predicted_y <- predict(lda_model,hawks_train_x)$class %>% as.character() %>% as.numeric() # use the model to make predictions on the training data
+lda_train_error <- mean(abs(lda_train_predicted_y-hawks_train_y)) # calculate the train error
 lda_train_error
 
-lda_test_predicted_y <- predict(lda_model,hawks_test_x)$class %>% as.character() %>% as.numeric()
-lda_test_error <- mean(abs(lda_test_predicted_y-hawks_test_y))
+lda_test_predicted_y <- predict(lda_model,hawks_test_x)$class %>% as.character() %>% as.numeric() # use the model to make predictions on the test data
+lda_test_error <- mean(abs(lda_test_predicted_y-hawks_test_y)) # calculate the test error
 lda_test_error
 
 ```
@@ -132,38 +134,43 @@ $P(Y = 1 | X = x) = S(wx^T + w_0) = \frac{1}{1 + e^{-wx^T-w_0}}$.
 After some fiddling around the bayes classifier satisfies from the above: $\phi^*(x) = 1 \leftarrow \rightarrow wx^T+w_0\geq 0$. Equivalently $\phi^*(x) = 1\{wx^T+w_0 \geq 0\}$, meaning that logistic regression also has a Bayes optimal classifier.
 
 ```{r part4, echo=FALSE}
+
+#function to model a sigmoid curve given given input x
 logist_func <- function(x){
   y = exp(x) / (1 + exp(x))
 }
 
 logist_plot <- ggplot(data = data.frame(x = c(-10,10)), aes(x))
-logist_plot + stat_function(fun=logist_func) + xlab("z") + ylab("S(z)")
+logist_plot + stat_function(fun=logist_func) + xlab("z") + ylab("S(z)") # plot the sigmoid curve using the logist_func
 
-num_hawks <- hawks_total %>% nrow()
-num_train <- floor(num_hawks*0.6)
-num_test <- num_hawks - num_train
+num_hawks <- hawks_total %>% nrow() # get the total number of hawks
+num_train <- floor(num_hawks*0.6) # get number of training examples
+num_test <- num_hawks - num_train # all other examples are for testing, 40%
 
-set.seed(123)
-test_inds <- sample(seq(num_hawks), num_test)
-train_inds <- setdiff(seq(num_hawks), test_inds)
+set.seed(123) # ensure reproducibility
+test_inds <- sample(seq(num_hawks), num_test) # generate test indices at random
+train_inds <- setdiff(seq(num_hawks), test_inds) # the training data is the disjoint set of the testing data
 
-hawks_train <- hawks_total %>% filter(row_number() %in% train_inds)
-hawks_test <- hawks_total %>% filter(row_number() %in% test_inds)
+hawks_train <- hawks_total %>% filter(row_number() %in% train_inds) # use the training indices to extract the training data
+hawks_test <- hawks_total %>% filter(row_number() %in% test_inds) # use the test indices to extract the test data
 
-hawks_train_x <- hawks_train %>% select(-Species)
-hawks_train_y <- hawks_train %>% pull(Species)
+nrow(hawks_train) # find how many training examples there are
+nrow(hawks_test) # find how many test examples there are
 
-hawks_test_x <- hawks_test %>% select(-Species)
-hawks_test_y <- hawks_test %>% pull(Species)
+hawks_train_x <- hawks_train %>% select(-Species) # remove the Species label so we only have the feature vectors
+hawks_train_y <- hawks_train %>% pull(Species) # extract only the Species label
 
-logistic_model <- glmnet(x=hawks_train_x %>% as.matrix(), y = hawks_train_y, family="binomial", alpha=0, lambda=0)
+hawks_test_x <- hawks_test %>% select(-Species) # remove the Species label so we only have the feature vectors
+hawks_test_y <- hawks_test %>% pull(Species) # extract only the Species label
 
-logistic_train_predicted_y <- predict(logistic_model, hawks_train_x %>% as.matrix(), type="class") %>% as.integer()
-logistic_train_error <- mean(abs(logistic_train_predicted_y-hawks_train_y))
+logistic_model <- glmnet(x=hawks_train_x %>% as.matrix(), y = hawks_train_y, family="binomial", alpha=0, lambda=0) #train the logistic model on the training data with the default settings
+
+logistic_train_predicted_y <- predict(logistic_model, hawks_train_x %>% as.matrix(), type="class") %>% as.integer() # make predictions on the training data
+logistic_train_error <- mean(abs(logistic_train_predicted_y-hawks_train_y)) # calculate the training error
 logistic_train_error
 
-logistic_test_predicted_y <- predict(logistic_model, hawks_test_x %>% as.matrix(), type="class") %>% as.integer()
-logistic_test_error <- mean(abs(logistic_test_predicted_y-hawks_test_y))
+logistic_test_predicted_y <- predict(logistic_model, hawks_test_x %>% as.matrix(), type="class") %>% as.integer() # make predictions on the test data
+logistic_test_error <- mean(abs(logistic_test_predicted_y-hawks_test_y)) # calculate the test error
 logistic_test_error
 
 ```
